@@ -1,0 +1,10 @@
+streamlit
+opencv-python
+numpy
+faiss-cpu
+pandas
+plotly
+ultralytics
+mediapipe
+onnxruntime
+insightface
