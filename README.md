@@ -11,6 +11,7 @@ c. Robust Database
 
 d. Attendance Log Logic
 
+e. Dashboard Plot 
 
 **Neccesary Features to Add:**
 ------------------------------
