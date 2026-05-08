@@ -4,8 +4,11 @@
 **Ongoing:**
 ------------
 a. Better Face Detection Model
+
 b. Face Landmark improvement(probably)
+
 c. Robust Database
+
 d. Attendance Log Logic
 
 
