@@ -22,4 +22,6 @@ e. Dashboard Plot
 3. SMS Alert for Unknown + (2.)
 
 
+***Important:*** Image Registration using InsightFace is optional & is used for testing.
+
 Srry for not creating venv.....
