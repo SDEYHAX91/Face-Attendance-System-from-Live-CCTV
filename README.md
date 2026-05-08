@@ -20,3 +20,6 @@ e. Dashboard Plot
 2. Intrusion Detection(Person detected but no face detected)
   
 3. SMS Alert for Unknown + (2.)
+
+
+Srry for not creating venv.....
