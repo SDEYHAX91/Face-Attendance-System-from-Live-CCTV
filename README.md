@@ -1,6 +1,5 @@
 # Face-Attendance-System-from-Live-CCTV
 
-
 **Ongoing:**
 ------------
 a. Better Face Detection Model
@@ -26,7 +25,7 @@ e. Dashboard Plot
 
 Srry for not creating venv.....
 
-# Face Recognition Attendance System
+------------------------------------------------------------------------------------------
 
 A real-time multi-person face recognition and attendance system built using:
 
@@ -71,8 +70,8 @@ Optimized for **CPU inference**.
 ## 1. Clone Repository
 
 ```bash
-git clone <your-repo-url>
-cd <your-repo-name>
+git clone https://github.com/SDEYHAX91/Face-Attendance-System-from-Live-CCTV
+cd Face-Attendance-System-from-Live-CCTV
 ```
 
 ---
@@ -154,30 +153,6 @@ project/
 ├── requirements.txt
 └── README.md
 ```
-
----
-
-# Current Development Progress
-
-## Ongoing Improvements
-
-- Better face detection model
-- Improved face landmark estimation
-- More robust database system
-- Improved attendance logging logic
-- Enhanced dashboard analytics and plots
-
----
-
-# Planned Features
-
-- Liveness Detection / Anti-Spoofing
-- Intrusion Detection
-  - Person detected but no face detected
-- SMS alerts for:
-  - Unknown person detection
-  - Intrusion detection events
-
 ---
 
 # Notes
