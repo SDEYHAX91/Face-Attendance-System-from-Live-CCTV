@@ -63,7 +63,8 @@ class FacePipeline:
         yolo_results = self.yolo(
             frame, 
             verbose=False, 
-            conf=0.4, 
+            conf=0.6, 
+            iou=0.3,
             imgsz=320,
             device='cpu'                    # Important
         )
@@ -128,13 +129,15 @@ class FacePipeline:
 
 # ====================== MAIN SYSTEM ======================
 class FaceAttendanceSystem:
-    def __init__(self, threshold=0.35):
+    def __init__(self, threshold=0.24):
         self.pipeline = FacePipeline()
         self.threshold = threshold
         self.db_path = 'attendance.db'
         self.embeddings = []   # (user_id, name, embedding)
         self._init_db()
         self._load_db()
+
+        self._load_faiss()  # Ensure clean state at startup
         
         # FAISS
         self.dim = 512
@@ -142,12 +145,14 @@ class FaceAttendanceSystem:
         self.metadata = []
         self._load_faiss()
 
+
     def _init_db(self):
         conn = sqlite3.connect(self.db_path)
         conn.execute('''CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT, embedding BLOB)''')
         conn.execute('''CREATE TABLE IF NOT EXISTS attendance (timestamp TEXT, date TEXT, user_id TEXT, name TEXT)''')
         conn.commit()
         conn.close()
+
 
     def _load_db(self):
         conn = sqlite3.connect(self.db_path)
@@ -157,61 +162,79 @@ class FaceAttendanceSystem:
             self.embeddings.append((row[0], row[1], emb))
         conn.close()
 
-    def _load_faiss(self):
-        if self.embeddings:
-            embs = np.array([e[2] for e in self.embeddings], dtype=np.float32)
-            self.index.add(embs)
-            self.metadata = [{"user_id": uid, "name": name} for uid, name, _ in self.embeddings]
 
-    def register_user_from_embeddings(self, embeddings, name):
-        if len(embeddings) == 0:
-            return 0, None
-        # Convert to numpy float32 array
-        embeddings = np.asarray(embeddings, dtype=np.float32)
-        # -----------------------------
-        # Step 1: Normalize each embedding
-        # -----------------------------
-        embeddings = embeddings / np.linalg.norm(
-            embeddings,
-            axis=1,
-            keepdims=True
-        )
-        # -----------------------------
-        # Step 2: Average embeddings
-        # -----------------------------
-        avg_emb = np.mean(embeddings, axis=0)
-        # -----------------------------
-        # Step 3: Normalize averaged embedding
-        # -----------------------------
-        avg_emb = avg_emb / np.linalg.norm(avg_emb)
-        # Generate unique user ID
-        user_id = f"ID-{datetime.now().strftime('%Y%m%d%H%M%S')}"
-        # Save to SQLite database
-        conn = sqlite3.connect(self.db_path)
-        conn.execute(
-            "INSERT OR REPLACE INTO users VALUES (?, ?, ?)",
-            (
-                user_id,
-                name,
-                pickle.dumps(avg_emb)
+    def _load_faiss(self):
+        """Safely rebuild FAISS index from current embeddings"""
+        self.dim = 512
+        self.index = faiss.IndexFlatIP(self.dim)
+        self.metadata = []
+
+        if self.embeddings:
+            valid_embs = []
+            for item in self.embeddings:
+                if len(item) >= 3 and item[2] is not None:
+                    uid, name, emb = item[0], item[1], item[2]
+                    emb = np.array(emb, dtype=np.float32)
+                    norm = np.linalg.norm(emb)
+                    if norm > 0:
+                        emb = emb / norm
+                        valid_embs.append(emb)
+                        self.metadata.append({"user_id": uid, "name": name})
+
+            if valid_embs:
+                embs_array = np.array(valid_embs, dtype=np.float32)
+                self.index.add(embs_array)
+
+        print(f"✅ FAISS index rebuilt successfully. Total faces: {self.index.ntotal}")
+
+
+    def register_user_from_embeddings(self, embeddings, name, raw=False):
+            if len(embeddings) == 0:
+                return 0, None
+            
+            # Convert to numpy array
+            embeddings = np.asarray(embeddings, dtype=np.float32)
+            
+            if not raw:
+                # === Original behavior (used by camera registration) ===
+                # Normalize each embedding
+                embeddings = embeddings / np.linalg.norm(embeddings, axis=1, keepdims=True)
+                # Average them
+                avg_emb = np.mean(embeddings, axis=0)
+                # Normalize final embedding
+                avg_emb = avg_emb / np.linalg.norm(avg_emb)
+            else:
+                # === Raw embedding from InsightFace ===
+                avg_emb = embeddings[0]  # Take the single embedding
+                # Ensure it's normalized
+                norm = np.linalg.norm(avg_emb)
+                if norm > 0:
+                    avg_emb = avg_emb / norm
+
+            # Generate unique user ID
+            user_id = f"ID-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+
+            # Save to SQLite
+            conn = sqlite3.connect(self.db_path)
+            conn.execute(
+                "INSERT OR REPLACE INTO users VALUES (?, ?, ?)",
+                (
+                    user_id,
+                    name,
+                    pickle.dumps(avg_emb)
+                )
             )
-        )
-        conn.commit()
-        conn.close()
-        # Store in memory
-        self.embeddings.append(
-            (user_id, name, avg_emb)
-        )
-        # Add to FAISS index
-        self.index.add(
-            avg_emb.reshape(1, -1).astype(np.float32)
-        )
-        # Store metadata
-        self.metadata.append({
-            "user_id": user_id,
-            "name": name
-        })
-        return len(embeddings), user_id
+            conn.commit()
+            conn.close()
+
+            # Add to memory
+            self.embeddings.append((user_id, name, avg_emb))
+            
+            # Rebuild FAISS index (Recommended)
+            self._load_faiss()
+
+            return len(embeddings), user_id
+
 
     def recognize(self, img):
         faces_info = self.pipeline.detect_and_align(img)
@@ -245,6 +268,7 @@ class FaceAttendanceSystem:
                 })
         return results
 
+
     def mark_attendance(self, name, user_id):
         if name == 'Unknown':
             return
@@ -260,6 +284,7 @@ class FaceAttendanceSystem:
             conn.commit()
         conn.close()
     
+
     def delete_identity(self, name_to_delete):
         """Delete a person by name"""
         if not name_to_delete:
