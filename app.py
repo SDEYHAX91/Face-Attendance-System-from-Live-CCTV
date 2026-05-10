@@ -38,7 +38,7 @@ from face_system import FaceAttendanceSystem
 # Initialize System
 if st.session_state.face_system is None:
     with st.spinner("Loading YOLO + MediaPipe + ArcFace Pipeline..."):
-        st.session_state.face_system = FaceAttendanceSystem(threshold=0.15)
+        st.session_state.face_system = FaceAttendanceSystem(threshold=0.55)
         # Clean inconsistent embeddings (Temporary fix)
         if st.session_state.face_system is not None:
             cleaned = [item for item in st.session_state.face_system.embeddings if len(item) >= 2]
@@ -48,21 +48,15 @@ if st.session_state.face_system is None:
 if st.session_state.face_system is not None:
     cleaned = []
     for item in st.session_state.face_system.embeddings:
-        if len(item) >= 2:
-            uid = item[0]
-            name = item[1]
-            emb = item[2] if len(item) > 2 else None
-            cleaned.append((uid, name, emb))
-    
+        if len(item) >= 3 and item[2] is not None:
+            cleaned.append(item)
+        
     st.session_state.face_system.embeddings = cleaned
-    # Rebuild FAISS
     st.session_state.face_system._load_faiss()
-    print(f"✅ Cleaned embeddings list. Total: {len(cleaned)}")
 
 # ========================== ATTENDANCE DB ==========================
 def init_attendance_db():
     conn = sqlite3.connect("attendance.db")
-    conn.execute("DROP TABLE IF EXISTS attendance")
     conn.execute('''CREATE TABLE IF NOT EXISTS attendance (
                     id INTEGER PRIMARY KEY,
                     timestamp TEXT,
@@ -223,7 +217,7 @@ with tab2:
     log_placeholder = st.empty()   # For live log feedback
 
     if enable_cam:
-        cap = cv2.VideoCapture('Test.mp4')
+        cap = cv2.VideoCapture('Test.mp4')  # Change to 0 for webcam
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
 
@@ -380,91 +374,6 @@ with tab4:
         st.caption("⚠️ This action is permanent.")
     else:
         st.info("No registered faces yet.")
-
-# ===================== IMAGE REGISTER =====================
-import insightface
-from insightface.app import FaceAnalysis
-import onnxruntime as ort
-
-with tab5:
-    st.subheader("📸 Register from Image (InsightFace buffalo_s)")
-    
-    name_input = st.text_input("👤 Full Name", 
-                              placeholder="Enter full name", 
-                              key="image_name_input")
-    
-    uploaded_file = st.file_uploader("Upload a clear face photo", 
-                                   type=["jpg", "jpeg", "png"], 
-                                   key="image_upload")
-
-    if uploaded_file is not None and name_input.strip():
-        # Read image
-        file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
-        image = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
-        
-        st.image(image, channels="BGR", caption="Uploaded Image", use_container_width=True)
-        
-        if st.button("🔍 Detect & Register with InsightFace", type="primary", use_container_width=True):
-            with st.spinner("Loading InsightFace buffalo_s model and processing..."):
-                
-                # Initialize InsightFace (cached in session state)
-                if 'insightface_app' not in st.session_state:
-                    st.session_state.insightface_app = FaceAnalysis(
-                        name='buffalo_s',
-                        providers=['CPUExecutionProvider']
-                    )
-                    st.session_state.insightface_app.prepare(ctx_id=0, det_size=(640, 640))
-                
-                app = st.session_state.insightface_app
-                
-                # Get faces
-                faces = app.get(image)
-                
-                if len(faces) == 0:
-                    st.error("❌ No face detected in the image. Please try a clearer photo.")
-                else:
-                    if len(faces) > 1:
-                        st.warning(f"⚠️ {len(faces)} faces detected. Using the highest quality one.")
-                    
-                    # Sort by detection score and take the best one
-                    faces = sorted(faces, key=lambda x: x.det_score, reverse=True)
-                    face = faces[0]
-                    
-                    embedding = face.embedding  # 512-dimensional vector
-                    
-                    # Draw bounding box and landmarks
-                    vis = image.copy()
-                    bbox = face.bbox.astype(int)
-                    cv2.rectangle(vis, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (0, 255, 100), 3)
-                    
-                    # Optional: Draw landmarks
-                    if hasattr(face, 'landmark') and face.landmark is not None:
-                        for p in face.landmark.astype(int):
-                            cv2.circle(vis, tuple(p), 3, (0, 0, 255), -1)
-                    
-                    st.image(vis, channels="BGR", caption="Detected Face (InsightFace)", use_container_width=True)
-                    
-                    # Register using your existing system
-                    embeddings_array = np.array([embedding])
-                    num_embeddings, pid = st.session_state.face_system.register_user_from_embeddings(
-                        embeddings_array, name_input.strip()
-                    )
-                    
-                    st.success(f"✅ Registration Successful!")
-                    st.balloons()
-                    st.info(f"""
-                        **Name:** {name_input.strip()}  
-                        **Person ID:** `{pid}`  
-                        **Embeddings Saved:** {num_embeddings}  
-                        **Model:** InsightFace buffalo_s
-                    """)
-                    
-                    # Clear session state
-                    st.session_state.pop("image_upload", None)
-                    st.session_state.pop("image_name_input", None)
-                    
-                    time.sleep(1.5)
-                    st.rerun()
 
 # ===================== ATTENDANCE LOG =====================
 with tab6:
