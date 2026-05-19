@@ -217,7 +217,7 @@ with tab2:
     log_placeholder = st.empty()   # For live log feedback
 
     if enable_cam:
-        cap = cv2.VideoCapture('Test.mp4')  # Change to 0 for webcam
+        cap = cv2.VideoCapture(0)  # Change to 0 for webcam
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
 
